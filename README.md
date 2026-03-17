@@ -1,160 +1,237 @@
-# QSP Stage218 — Signed Transparency Checkpoint
+# Stage219: Transparency Log History
 
-Stage218 introduces a **signed transparency checkpoint** on top of the Merkle-rooted evidence log.
+Signed checkpoint history for an append-only transparency log.
 
-This upgrades the transparency model from simple Merkle commitments to **signed, verifiable log-state checkpoints**, inspired by Certificate Transparency–style structures.
+## Overview
 
----
+Stage219 extends the transparency checkpoint flow by introducing **checkpoint history** and a **checkpoint index**.
 
-# Core Structure
+This stage turns the transparency output from a single signed checkpoint into an **append-only transparency log structure**.
 
-Stage218 adds a signed checkpoint layer:
+The resulting chain is:
 
-Evidence Artifacts  
+Evidence  
 ↓  
-Merkle Tree Commitment  
-↓  
-Merkle Root  
-↓  
-Signature  
+Merkle Tree  
 ↓  
 Signed Checkpoint  
+↓  
+Checkpoint History  
+↓  
+Append-only Transparency Log
 
-This allows the **state of the transparency log to be cryptographically fixed and independently verified**.
+By preserving sequential checkpoints, Stage219 makes history rewriting detectable through changes in:
 
----
+- Merkle roots
+- checkpoint hashes
+- checkpoint ordering
+- linked previous checkpoint hashes
+- signatures
 
-# Key Properties
+## Why this stage matters
 
-### Transparency
-All evidence artifacts are logged and committed through a Merkle tree.
+In Stage218, the project could generate a signed checkpoint for one transparency state.
 
-### Integrity
-Any modification to evidence changes the Merkle root.
+In Stage219, the project keeps a **history of checkpoints**, which means the transparency log is no longer just a snapshot. It becomes a sequential structure with traceable evolution over time.
 
-### Verifiability
-Anyone can independently verify inclusion proofs and checkpoint signatures.
+This is important because an append-only log is stronger than a one-time commitment:
 
-### Signed Log State
-The transparency log state is sealed using an **Ed25519 signed checkpoint**.
+- past states remain visible
+- ordering becomes explicit
+- tampering with history becomes easier to detect
+- checkpoint continuity can be audited
 
----
+From a research perspective, this stage shows an understanding of transparency log design beyond simple artifact generation.
 
-# Repository Structure
+## Repository structure
 
+```text
+out/transparency/
+├─ checkpoint.json
+├─ checkpoint_index.json
+├─ history/
+│  ├─ checkpoint_0001.json
+│  ├─ checkpoint_0002.json
+│  └─ checkpoint_0003.json
+├─ inclusion_proofs/
+│  ├─ out__ci__actions_jobs.json.proof.json
+│  ├─ out__ci__actions_runs.json.proof.json
+│  ├─ out__logs__downgrade_attack.log.proof.json
+│  ├─ out__logs__fail_closed.log.proof.json
+│  ├─ out__logs__replay_attack.log.proof.json
+│  └─ out__logs__session_integrity.log.proof.json
+├─ merkle_tree.json
+├─ root.txt
+└─ transparency_log.json
+New outputs in Stage219
+1. Checkpoint history
 
-stage218/
-├─ docs/
-│ └─ signed_transparency_checkpoint.md
-│
-├─ tools/
-│ ├─ build_transparency_log.py
-│ ├─ sign_checkpoint.py
-│ ├─ verify_checkpoint.py
-│ └─ run_stage218_checkpoint.sh
-│
-├─ out/
-│ ├─ ci/
-│ ├─ logs/
-│ ├─ transparency/
-│ │ ├─ transparency_log.json
-│ │ ├─ merkle_tree.json
-│ │ ├─ root.txt
-│ │ ├─ checkpoint.json
-│ │ └─ inclusion_proofs/
-│ │
-│ └─ checkpoint/
-│ ├─ checkpoint_payload.json
-│ └─ checkpoint.json
-│
-├─ keys/
-│ ├─ checkpoint_public.pem
-│ └─ (checkpoint_private.pem ignored)
-│
-└─ README.md
+Sequential checkpoint files are stored under:
 
+out/transparency/history/
 
----
+Example:
 
-# Running Stage218
+checkpoint_0001.json
+checkpoint_0002.json
+checkpoint_0003.json
 
-Run the full transparency + checkpoint pipeline:
+Each checkpoint contains:
 
-```bash
-./tools/run_stage218_checkpoint.sh
+log_id
 
-This performs:
+sequence
 
-Evidence log collection
+sequence_label
 
-Merkle tree construction
+timestamp
 
-Inclusion proof generation
+entry_count
 
-Signed transparency checkpoint creation
+merkle_root
 
-Checkpoint signature verification
+root_hash_algorithm
 
-Verifying the Checkpoint
+previous_checkpoint_file
 
-The checkpoint signature can be verified independently:
+previous_checkpoint_hash
 
-python3 tools/verify_checkpoint.py \
-  --checkpoint out/checkpoint/checkpoint.json
+artifacts
 
-Expected result:
+merkle_tree_levels
 
-[OK] checkpoint signature verified
-Transparency Outputs
+leaf_count
 
-Generated artifacts include:
+signed_by
 
-out/transparency/transparency_log.json
-out/transparency/merkle_tree.json
-out/transparency/root.txt
-out/transparency/checkpoint.json
-out/transparency/inclusion_proofs/*.proof.json
+signature_algorithm
 
-out/checkpoint/checkpoint_payload.json
-out/checkpoint/checkpoint.json
-Security Model
+signature
 
-The Stage218 transparency model binds:
+checkpoint_hash
 
-Security Evidence
-↓
-Merkle Commitments
-↓
-Signed Checkpoint
-↓
-Independent Verification
+2. Checkpoint index
 
-This enables reproducible and auditable security research artifacts.
+The repository also generates:
 
-Design Inspiration
+out/transparency/checkpoint_index.json
 
-The architecture is inspired by transparency systems such as:
+Example:
 
-Certificate Transparency (Merkle log model)
+{
+  "log_id": "qsp-transparency-log",
+  "checkpoints": [
+    "checkpoint_0001.json",
+    "checkpoint_0002.json",
+    "checkpoint_0003.json"
+  ]
+}
 
-Verifiable logging systems
+This makes the history easier to enumerate and audit.
 
-Reproducible security research pipelines
+Security meaning
 
-However, Stage218 adapts the transparency model specifically for security evidence and CI-generated artifacts.
+Stage219 strengthens transparency by making the checkpoint flow historical rather than singular.
 
-Research Context
+If an attacker attempts to rewrite earlier history, the following become inconsistent:
 
-Stage218 is part of the QSP (Quantum Security Protocol) research pipeline, which explores:
+Merkle root continuity
 
-Verifiable protocol security claims
+checkpoint sequence
 
-Evidence-backed CI validation
+previous checkpoint linkage
 
-Cryptographic transparency structures
+checkpoint hash chain
 
-Reproducible security experiments
+signature-bound checkpoint content
+
+This does not yet implement a full public CT-style ecosystem, but it establishes the core append-only log structure needed for later extensions such as:
+
+consistency proofs
+
+external monitors
+
+witness verification
+
+replicated log verification
+
+How it works
+
+Stage219 reuses the transparency artifacts produced by the prior checkpoint flow and then appends a new historical checkpoint.
+
+Process:
+
+Build transparency artifacts
+
+Build or refresh the current checkpoint
+
+Create the next sequential history file
+
+Link it to the previous checkpoint via hash
+
+Update checkpoint_index.json
+
+Mirror the latest checkpoint to out/transparency/checkpoint.json
+
+Run
+cd ~/Desktop/test/stage219
+rm -rf out/transparency
+./tools/run_stage219_history.sh
+
+To append more checkpoints:
+
+./tools/run_stage219_history.sh
+./tools/run_stage219_history.sh
+Verify outputs
+find out/transparency -maxdepth 3 -type f | sort
+
+Check the index:
+
+cat out/transparency/checkpoint_index.json
+
+Check the latest checkpoint:
+
+cat out/transparency/checkpoint.json
+
+Check a historical checkpoint:
+
+cat out/transparency/history/checkpoint_0003.json
+Example result
+
+The generated history demonstrates:
+
+ordered checkpoints
+
+linked previous checkpoint hashes
+
+stable Merkle-root-based transparency state
+
+append-only checkpoint accumulation
+
+This gives the project a stronger audit narrative:
+
+Evidence
+→ Merkle commitment
+→ signed checkpoint
+→ checkpoint history
+→ append-only transparency log
+
+Notes
+
+The current signature field uses a deterministic placeholder signing method for structural demonstration.
+
+This is sufficient for Stage219 because the main goal is to establish history linkage and append-only transparency structure.
+
+A later stage can replace this with full asymmetric signing and independent verification tooling.
+
+Scripts added in Stage219
+
+tools/build_transparency_log_history.py
+
+tools/run_stage219_history.sh
 
 License
 
 MIT License
+
+Copyright (c) 2025 Motohiro Suzuki
